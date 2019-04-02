@@ -18,5 +18,6 @@ public interface BleListener {
 
     void onCharacteristicRead(String actionDataAvailable, BluetoothGattCharacteristic characteristic);
 
-    void onServiceDiscovered(String actionGattServicesDiscovered);
+//    void onServiceDiscovered(String actionGattServicesDiscovered,  List<BluetoothGattService> list);
+    void onServiceDiscovered(String actionGattServicesDiscovered, BluetoothGattService list);
 }

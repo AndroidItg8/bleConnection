@@ -20,6 +20,7 @@ import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Parcelable;
 import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
@@ -45,12 +46,6 @@ import java.util.List;
 import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
 
-import static com.ith8.bleconnection.BleService.ACTION_BLUETOOTH_GATH_SERVICE;
-import static com.ith8.bleconnection.BleService.ACTION_DATA_AVAILABLE;
-import static com.ith8.bleconnection.BleService.ACTION_DEVICE_CONNECTED;
-import static com.ith8.bleconnection.BleService.ACTION_GATT_DISCONNECTED;
-import static com.ith8.bleconnection.BleService.ACTION_GATT_SERVICES_DISCOVERED;
-import static com.ith8.bleconnection.BleService.EXTRA_DATA;
 
 
 public class MainActivity extends AppCompatActivity implements EasyPermissions.PermissionCallbacks, DeviceAdapter.ItemClickedListner {
@@ -61,43 +56,13 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
     private ScanCallback callback;
 
 
-    private static final int RC_ACCESS_COURSE_LOCATION = 101;
+    private static final int RC_SATE = 101;
     private static final int REQUEST_ENABLE_BT = 201;
     private boolean connected = false;
     private static final String TAG = "MainActivity";
 
 
-    private final BroadcastReceiver gattUpdateReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            final String action = intent.getAction();
-            if (ACTION_DEVICE_CONNECTED.equals(action)) {
-                if (!connected) {
-                    setDeviceConnected();
-                    connected = true;
-                }
-//                updateConnectionState(R.string.connected);
-//                invalidateOptionsMenu();
 
-
-            } else if (ACTION_GATT_DISCONNECTED.equals(action)) {
-                connected = false;
-//                updateConnectionState(R.string.disconnected);
-//                invalidateOptionsMenu();
-//                clearUI();
-            } else if (ACTION_GATT_SERVICES_DISCOVERED.equals(action)) {
-                // Show all the supported services and characteristics on the
-                // user interface.
-                if (intent.hasExtra(ACTION_BLUETOOTH_GATH_SERVICE))
-                    list = intent.getParcelableArrayListExtra(ACTION_BLUETOOTH_GATH_SERVICE);
-                        displayGattServices(list);
-
-
-            } else if (ACTION_DATA_AVAILABLE.equals(action)) {
-//                displayData(intent.getStringExtra(BleService.EXTRA_DATA));
-            }
-        }
-    };
 
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
@@ -106,17 +71,20 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
         public void onScanResult(int callbackType, ScanResult result) {
 //                      super.onScanResult(callbackType, result);
             Log.d(TAG, "onScanResult: " + result.getDevice() + "cal;backType" + callbackType);
-            BluetoothDevice devices = result.getDevice();
+            if (!isScann) {
+                BluetoothDevice devices = result.getDevice();
+                DeviceModel model = new DeviceModel();
+                model.setAddress(devices.getAddress());
+                model.setName(devices.getName());
+                boolean fetch = devices.fetchUuidsWithSdp();
 
-            DeviceModel model = new DeviceModel();
-            model.setAddress(devices.getAddress());
-            model.setName(devices.getName());
-            boolean fetch = devices.fetchUuidsWithSdp();
 
-
-            model.setRssi(calculateByRange(result.getRssi()));
+                model.setRssi(calculateByRange(result.getRssi()));
 //                     list.add(model);
-            adapter.setItem(model);
+                adapter.setItem(model);
+            } else {
+                Log.d(TAG, "onScanResult: not scanned ");
+            }
 
 
         }
@@ -124,11 +92,11 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
         @Override
         public void onBatchScanResults(List<ScanResult> results) {
 //                      super.onBatchScanResults(results);
-            for (ScanResult rs:results
-                 ) {
-                Log.d(TAG, "onBatchScanResults: "+ rs.getScanRecord().getServiceData().get(0));
-                Log.d(TAG, "onBatchScanResults: "+ rs.getScanRecord().getManufacturerSpecificData().get(0));
-                Log.d(TAG, "onBatchScanResults UI iids: "+ rs.getScanRecord().getServiceUuids().get(0).getUuid());
+            for (ScanResult rs : results
+            ) {
+                Log.d(TAG, "onBatchScanResults: " + rs.getScanRecord().getServiceData().get(0));
+                Log.d(TAG, "onBatchScanResults: " + rs.getScanRecord().getManufacturerSpecificData().get(0));
+                Log.d(TAG, "onBatchScanResults UI iids: " + rs.getScanRecord().getServiceUuids().get(0).getUuid());
 
             }
         }
@@ -136,11 +104,14 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
         @Override
         public void onScanFailed(int errorCode) {
 //                      super.onScanFailed(errorCode);
-            Log.d(TAG, "onScanFailed: "+errorCode);
+            Log.d(TAG, "onScanFailed: " + errorCode);
         }
 
     };
     private List<BluetoothGattService> list = null;
+    private boolean isScann = false;
+    private boolean isPermission=false;
+    private   BluetoothGattService devices;
 
     private void setDeviceConnected() {
         Toast.makeText(this, "Device Connected", Toast.LENGTH_SHORT).show();
@@ -153,7 +124,6 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
         Toolbar toolbar = findViewById(R.id.toolbar);
         recyclerView = findViewById(R.id.recyclerView);
         setSupportActionBar(toolbar);
-        setBroadcastReciver();
 
         FloatingActionButton fab = findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
@@ -166,16 +136,7 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
         });
     }
 
-    private void setBroadcastReciver() {
-        IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(EXTRA_DATA);
-        intentFilter.addAction(ACTION_DATA_AVAILABLE);
-        intentFilter.addAction(ACTION_GATT_DISCONNECTED);
-        intentFilter.addAction(ACTION_DEVICE_CONNECTED);
-        intentFilter.addAction(ACTION_GATT_SERVICES_DISCOVERED);
-        intentFilter.addAction(ACTION_BLUETOOTH_GATH_SERVICE);
-        LocalBroadcastManager.getInstance(this).registerReceiver(gattUpdateReceiver, intentFilter);
-    }
+
 
 
     @Override
@@ -235,30 +196,62 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
             Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
         } else {
-            checkPermission();
+            askForPermission();
         }
 
     }
 
-    @AfterPermissionGranted(RC_ACCESS_COURSE_LOCATION)
-    private void checkPermission() {
-        if (EasyPermissions.hasPermissions(this, Manifest.permission.ACCESS_COARSE_LOCATION)) {
-            // Have permission, do the thing!
+
+
+    @AfterPermissionGranted(RC_SATE)
+    public void askForPermission() {
+        if (checkLocationPermission()) {
+            isPermission=true;
+
             checkForLocationOnOff();
 
-
         } else {
-            // Ask for one permission
-            EasyPermissions.requestPermissions(this, getResources().getString(R.string.rationale_location),
-                    RC_ACCESS_COURSE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION);
+            EasyPermissions.requestPermissions(this, "You must grant this permission for your login", RC_SATE, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN);
+
         }
+    }
+
+    private boolean checkLocationPermission() {
+        return EasyPermissions
+                .hasPermissions(this, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN);
     }
 
     @Override
-    public void onPermissionsGranted(int requestCode, @NonNull List<String> perms) {
-        startBleScan();
-//        mBluetoothAdapter.getBluetoothLeScanner().startScan(getLeScanCallback());
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        EasyPermissions.onRequestPermissionsResult(requestCode, permissions, grantResults, this);
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
+
+    @Override
+    public void onPermissionsGranted(int requestCode, List<String> perms) {
+        if (requestCode == RC_SATE) {
+//            listener.grantedAllPermission();
+            startBleScan();
+            return;
+        }
+
+    }
+
+    @Override
+    public void onPermissionsDenied(int requestCode, List<String> perms) {
+        if (requestCode == RC_SATE) {
+//            listener.notGrantedAllPermission();
+//            listener=null;
+   isPermission=false;
+
+        }
+    }
+
+
+
+
+
+
 
     private void checkForLocationOnOff() {
         final LocationManager manager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
@@ -278,11 +271,11 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
             mBluetoothAdapter.getBluetoothLeScanner().startScan(getLeScanCallback());
 
 
-
         }
     }
+
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    private ScanCallback getLeScanCallback(){
+    private ScanCallback getLeScanCallback() {
         callback = new ScanCallback() {
             @Override
             public void onScanResult(int callbackType, ScanResult result) {
@@ -296,8 +289,6 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
                 boolean fetch = devices.fetchUuidsWithSdp();
 
 
-
-
                 model.setRssi(calculateByRange(result.getRssi()));
 //                     list.add(model);
                 adapter.setItem(model);
@@ -305,12 +296,11 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
                 devices.getBluetoothClass().getMajorDeviceClass();
 //                Log.d(TAG, "onScanResult UUId: "+  devices.getUuids()[0].getUuid());
 
-//                mDeviceData = result.getScanRecord().getServiceData();
-                Log.d(TAG, "onScanResult getServiceData: "+result.getScanRecord().getServiceData());
-                Log.d(TAG, "onScanResult: "+result.getScanRecord().getServiceUuids());
-                Log.d(TAG, "onScanResult Bound: "+  devices.getBondState());
-                Log.d(TAG, "onScanResult getBluetoothClass : "+  devices.getBluetoothClass().toString());
-
+////                mDeviceData = result.getScanRecord().getServiceData();
+//                Log.d(TAG, "onScanResult getServiceData: "+result.getScanRecord().getServiceData());
+//                Log.d(TAG, "onScanResult: "+result.getScanRecord().getServiceUuids());
+//                Log.d(TAG, "onScanResult Bound: "+  devices.getBondState());
+//                Log.d(TAG, "onScanResult getBluetoothClass : "+  devices.getBluetoothClass().toString());
 
 
             }
@@ -336,11 +326,7 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
     }
 
 
-    @Override
-    public void onPermissionsDenied(int requestCode, @NonNull List<String> perms) {
-        Log.d(TAG, "onPermissionsDenied: ");
 
-    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -369,6 +355,7 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
     @Override
     public void onItemClicked(int position, DeviceModel model) {
         Log.d(TAG, "onItemClicked: ");
+        isScann = true;
         Intent intent = new Intent(this, BleService.class);
         intent.putExtra(CommonMethod.DEVICE_ADDRESS, model.getAddress());
         intent.putExtra(CommonMethod.DEVICE_NAME, model.getName());
@@ -412,16 +399,31 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
 //
         }
     }
+    private void displayGattServices(BluetoothGattService gattServices) {
+        if (gattServices == null) return;
+
+
+//        // Loops through available GATT Services.
+//        for (BluetoothGattService gattService : gattServices) {
+            Log.d(TAG, "displayGattServices gattService : " + new Gson().toJson(gattServices));
+//
+            for (BluetoothGattCharacteristic gattCharacteristic :
+                    gattServices.getCharacteristics()) {
+                Log.d(TAG, "displayGattServices gattCharacteristic: " + new Gson().toJson(gattCharacteristic));
+//                charas.add(gattCharacteristic);
+            }
+//
+//            }
+//
+//        }
+    }
 
     @Override
     protected void onResume() {
         super.onResume();
 
 
-
-
     }
-
 
 
     @Override
@@ -432,7 +434,9 @@ public class MainActivity extends AppCompatActivity implements EasyPermissions.P
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(gattUpdateReceiver);
+
 
     }
+
+
 }

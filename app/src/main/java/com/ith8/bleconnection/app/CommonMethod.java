@@ -12,14 +12,13 @@ public class CommonMethod {
 
 
     // DAQ Specific UUIDs
-//    public final static UUID TEMP_SERVICE_UUID =UUID.fromString("0000ffa0-0000-1000-8000-00805f9b34fb");
-    public final static UUID TEMP_SERVICE_UUID = UUID.fromString("2464a081-db13-4c7f-9623-837e9227b8de");
+    public final static UUID TEMP_SERVICE_UUID =UUID.fromString("0000ffa0-0000-1000-8000-00805f9b34fb");
+//    public final static UUID TEMP_SERVICE_UUID = UUID.fromString("00001800-0000-1000-8000-00805f9b34fb");
 
 
 
     // BLE UUIDs
-//    public final static UUID SENSOR_ON_OFF =UUID.fromString("0000ffa1-0000-1000-8000-00805f9b34fb");
-    public final static UUID SENSOR_ON_OFF = UUID.fromString("2464a081-db13-4c7f-9623-837e9227b8de");
+    public final static UUID SENSOR_ON_OFF =UUID.fromString("0000ffa1-0000-1000-8000-00805f9b34fb");
     public static final String DEVICE = "DEVICE";
 
 

@@ -37,12 +37,11 @@ public class BleConnectionManager implements Handler.Callback {
     private BluetoothGattCallback callback;
     private BluetoothGatt mBluetoothGatt;
     private BluetoothAdapter mBluetoothAdapter;
-    private static final String TAG = "BleConnectionManager";
+    private static final String TAG = "MainBleConnMan";
     private String mBluetoothDeviceAddress;
     private boolean connecting = false;
     private String address;
-
-
+    private int mState = 0;
 
 
     public BleConnectionManager(BleService callback) {
@@ -50,6 +49,16 @@ public class BleConnectionManager implements Handler.Callback {
         HandlerThread handlerThread = new HandlerThread("BleThread");
         handlerThread.start();
         bleHandler = new Handler(handlerThread.getLooper(), this);
+
+
+    }
+
+    private void reset() {
+        mState = 0;
+    }
+
+    private void advance() {
+        mState++;
     }
 
     public void initCallback() {
@@ -64,11 +73,15 @@ public class BleConnectionManager implements Handler.Callback {
 
 
                     if (discoverServices()) {
-                        Log.i(TAG, "Attempting to start service discovery:");
-                        bleHandler.sendMessage(Message.obtain(null,MSG_STATE_DISCOVERD,gatt.getServices()));
-                    }else
-                    {
-                        Log.d(TAG,"Fail to descover service: Error "+status );
+                        bleHandler.sendMessage(Message.obtain(null, MSG_STATE_DISCOVERD,mBluetoothGatt.getService(CommonMethod.TEMP_SERVICE_UUID)));
+                        for (BluetoothGattService gattService :gatt.getServices()) {
+                            Log.d(TAG, "Attempting to start service discovery:");
+                            Log.d(TAG, "Service UUID Found: " + gattService.getUuid().toString());
+//                            Log.d(TAG, "onConnectionStateChange: getIncludedServices"+ new Gson().toJson(gattService));
+                        bleHandler.sendMessage(Message.obtain(null, MSG_STATE_DISCOVERD, gattService.getIncludedServices()));
+                        }
+                    } else {
+                        Log.i(TAG, "Fail to discoverd service: Error " + status);
                     }
 //                    new Handler(Looper.getMainLooper()).post(new Runnable() {
 //                        @Override
@@ -103,7 +116,16 @@ public class BleConnectionManager implements Handler.Callback {
 //                thread.start();
 
                 if (status == BluetoothGatt.GATT_SUCCESS) {
-                    bleHandler.sendMessage(Message.obtain(null, MSG_STATE_DISCOVERD, gatt.getServices()));
+                    for (BluetoothGattService gattService : gatt.getServices()) {
+                        Log.d(TAG, "Service UUID Found: " + gattService.getUuid().toString());
+//                        Log.d(TAG, "onConnectionStateChange: getIncludedServices"+ new Gson().toJson(gattService));
+
+                        bleHandler.sendMessage(Message.obtain(null, MSG_STATE_DISCOVERD,gattService == null ? null : gattService));
+                    }
+                } else {
+
+                    Log.i(TAG, " onServicesDiscovered Fail to Discovered service: Error " + status);
+
                 }
 
 
@@ -180,6 +202,7 @@ public class BleConnectionManager implements Handler.Callback {
             Log.w(TAG, "BluetoothAdapter not initialized or unspecified address.");
             return false;
         }
+        BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
 
 
         /*
@@ -201,7 +224,6 @@ public class BleConnectionManager implements Handler.Callback {
 //            }
 //        }
 
-        final BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
 
         if (device == null) {
             Log.w(TAG, "Device not found.  Unable to connect.");
@@ -209,12 +231,12 @@ public class BleConnectionManager implements Handler.Callback {
         }
         // We want to directly connect to the device, so we are setting the autoConnect
         // parameter to false.
-        Log.d(TAG, "Trying to create a new connection.");
 
         mBluetoothDeviceAddress = address;
         if (callback == null) {
             Log.d(TAG, "Callback is null");
             initCallback();
+
         }
         if (!connecting) {
             mBluetoothAdapter.cancelDiscovery();
@@ -258,7 +280,12 @@ public class BleConnectionManager implements Handler.Callback {
                 break;
             case MSG_STATE_DISCOVERD:
 //                    listener.onServiceDiscovered(ACTION msg.obj);
-                listener.onServiceDiscovered(ACTION_GATT_SERVICES_DISCOVERED);
+                advance();
+
+                if (listener != null)
+//                    listener.onServiceDiscovered(ACTION_GATT_SERVICES_DISCOVERED, (List<BluetoothGattService>) msg.obj);
+                    listener.onServiceDiscovered(ACTION_GATT_SERVICES_DISCOVERED, (BluetoothGattService) msg.obj);
+
                 break;
         }
         return true;
@@ -267,12 +294,29 @@ public class BleConnectionManager implements Handler.Callback {
     private boolean discoverServices() {
         if (mBluetoothGatt == null)
             throw new NullPointerException("mBluetoothGatt still null check it");
-        try{
+        try {
             Thread.sleep(70);
-        }catch (InterruptedException e) {
+        } catch (InterruptedException e) {
             e.printStackTrace();
         }
         return mBluetoothGatt.discoverServices();
+    }
+
+
+    private void enableNextSensor(BluetoothGatt gatt) {
+        BluetoothGattCharacteristic characteristic = null;
+        switch (mState) {
+            case 0:
+                Log.d(TAG, "Enabling pressure accel");
+                characteristic = gatt.getService(TEMP_SERVICE_UUID).getCharacteristic(SENSOR_ON_OFF);
+                characteristic.setValue(new byte[]{0x02});
+                break;
+        }
+
+        if (characteristic != null)
+            gatt.writeCharacteristic(characteristic);
+        else
+            Log.w(TAG, "Characteristics null. Please check mState=0");
     }
 
 
@@ -282,5 +326,5 @@ public class BleConnectionManager implements Handler.Callback {
 //
 //        return mBluetoothGatt.getServices();
 //    }
-//    
+//
 }

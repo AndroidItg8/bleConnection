@@ -8,8 +8,10 @@ import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.Parcelable;
@@ -23,6 +25,18 @@ import com.ith8.bleconnection.app.Prefs;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import io.reactivex.Observable;
+import io.reactivex.ObservableEmitter;
+import io.reactivex.ObservableOnSubscribe;
+import io.reactivex.ObservableSource;
+import io.reactivex.Observer;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.schedulers.Schedulers;
+
+
 
 
 public class BleService extends Service implements BleListener {
@@ -39,10 +53,70 @@ public class BleService extends Service implements BleListener {
     public static final String ACTION_BLUETOOTH_GATH_SERVICE = "ACTION_BLUETOOTH_GATH_SERVICE";
     private BleConnectionManager manager;
     private BluetoothManager mBluetoothManager;
+    private BluetoothGattService devices;
+List<BluetoothGattService> serviceList = new ArrayList<>();
 
-  Intent  intent = new Intent();
-    private static final String TAG = "BleService";
+    Intent  intent = new Intent();
+    private static final String TAG = "MainBleService";
+    private final BroadcastReceiver gattUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final String action = intent.getAction();
+            Log.d(TAG, "onReceive: action" + action);
+            if (ACTION_DEVICE_CONNECTED.equals(action)) {
 
+                Log.d(TAG, "onReceive: action"+action);
+//                if (!connected) {
+//                    setDeviceConnected();
+//                    connected = true;
+//                }
+//                updateConnectionState(R.string.connected);
+//                invalidateOptionsMenu();
+
+
+            } else if (ACTION_GATT_DISCONNECTED.equals(action)) {
+//                connected = false;
+//                updateConnectionState(R.string.disconnected);
+//                invalidateOptionsMenu();
+//                clearUI();
+                Log.d(TAG, "onReceive: action"+action);
+
+            } else if (ACTION_GATT_SERVICES_DISCOVERED.equals(action)) {
+                // Show all the supported services and characteristics on the
+                // user interface.
+                if (intent.hasExtra(ACTION_BLUETOOTH_GATH_SERVICE))
+//                    list = intent.getParcelableExtra(ACTION_BLUETOOTH_GATH_SERVICE);
+                    devices   = intent.getParcelableExtra(ACTION_BLUETOOTH_GATH_SERVICE);
+////                displayGattServices(list);
+//                displayGattServices(devices);
+                    Log.d(TAG, "onReceive: action"+action);
+
+
+            } else if (ACTION_DATA_AVAILABLE.equals(action)) {
+//                displayData(intent.getStringExtra(BleService.EXTRA_DATA));
+                Log.d(TAG, "onReceive: action"+action);
+
+            }
+        }
+    };
+
+    private void setBroadcastReciver() {
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(EXTRA_DATA);
+        intentFilter.addAction(ACTION_DATA_AVAILABLE);
+        intentFilter.addAction(ACTION_GATT_DISCONNECTED);
+        intentFilter.addAction(ACTION_DEVICE_CONNECTED);
+        intentFilter.addAction(ACTION_GATT_SERVICES_DISCOVERED);
+        intentFilter.addAction(ACTION_BLUETOOTH_GATH_SERVICE);
+        LocalBroadcastManager.getInstance(this).registerReceiver(gattUpdateReceiver, intentFilter);
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        setBroadcastReciver();
+
+    }
 
     public BleService() {
         Log.d(TAG, "BleService: ");
@@ -123,7 +197,6 @@ public class BleService extends Service implements BleListener {
     @Override
     public void connectGatt(BluetoothDevice device, BluetoothGattCallback callback) {
         Log.d(TAG, "connectGatt: "+device.getBondState());
-        Log.d(TAG, "connectGatt: "+callback.toString());
 
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -131,11 +204,14 @@ public class BleService extends Service implements BleListener {
         } else {
             manager.setBluetoothGatt(device.connectGatt(getApplicationContext(), false, callback));
         }
+        Log.d(TAG, "connectGatt: "+device.getAddress());
+
 
     }
 
     @Override
     public void onDeviceConnected(String address) {
+        Log.d(TAG, "onDeviceConnected: address"+address);
         Prefs.putString(CommonMethod.DEVICE_ADDRESS, address);
         Prefs.putBoolean(CommonMethod.CONNECTED, true);
         sendBroadcast(ACTION_DEVICE_CONNECTED);
@@ -143,7 +219,7 @@ public class BleService extends Service implements BleListener {
 
     @Override
     public void onDevicesDisconnect(String actionGattServicesDiscovered) {
-        Log.d(TAG, "onDevicesDisconnect: ");
+        Log.d(TAG, "onDevicesDisconnect: "+actionGattServicesDiscovered);
 
         Prefs.remove(CommonMethod.DEVICE_ADDRESS);
         Prefs.remove(CommonMethod.CONNECTED);
@@ -162,6 +238,8 @@ public class BleService extends Service implements BleListener {
 
         // This is special handling for the Heart Rate Measurement profile. Data
         // parsing is carried out as per profile specifications.
+        Log.d(TAG, "sendBroadcast: characteristic"+ new Gson().toJson(characteristic));
+
         if(available.equalsIgnoreCase(ACTION_DATA_AVAILABLE)) {
 //            if (UUID_HEART_RATE_MEASUREMENT.equals(characteristic.getUuid())) {
                 int flag = characteristic.getProperties();
@@ -200,20 +278,89 @@ public class BleService extends Service implements BleListener {
     }
 
     @Override
-    public void onServiceDiscovered(String action) {
-        intent.putExtra(ACTION_GATT_SERVICES_DISCOVERED,action);
-//        intent.putParcelableArrayListExtra(ACTION_BLUETOOTH_GATH_SERVICE, (ArrayList<? extends Parcelable>) gatt);
-//        Log.d(TAG, "onServiceDiscovered: "+new Gson().toJson(gatt));
-//        getSupportedGattServices(gatt.getServices());
-        LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
+    public void onServiceDiscovered(final String action,  BluetoothGattService gatt) {
+        if (gatt == null) {
+            Log.d(TAG, "service not found!");
+        }else {
+
+            Observable.just(gatt).subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread()).subscribe(new Observer<BluetoothGattService>() {
+
+                @Override
+                public void onSubscribe(Disposable d) {
+
+                }
+
+                @Override
+                public void onNext(BluetoothGattService list) {
+//                    Log.d(TAG, "onServiceDiscovered: gathh" + new Gson().toJson(list));
+//                Log.d(TAG, "onNext: size"+list.size());
+                    serviceList.add(list);
+                    Log.d(TAG, "onNext:BluetoothGattService uuid"+list.getUuid().toString());
+                    Log.d(TAG, "onNext:BluetoothGattService type"+list.getType());
+                    Log.d(TAG, "onNext:BluetoothGattService id "+list.getInstanceId());
+                    Log.d(TAG, "onNext:BluetoothGattService Size "+list.getCharacteristics().size());
+                    displayGattServices(serviceList);
 
 
 
+//
+//                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+//                            intent.putExtra(ACTION_BLUETOOTH_GATH_SERVICE, list);
+//                            intent.putExtra(ACTION_GATT_SERVICES_DISCOVERED, action);
+//                            LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
+//                        }
+
+////        Log.d(TAG, "onServiceDiscovered: "+new Gson().toJson(gatt));
+////        getSupportedGattServices(gatt.getServices());
+                }
+
+                @Override
+                public void onError(Throwable e) {
+                    Log.d(TAG, "onError: e." + e.getMessage());
+                    e.printStackTrace();
+
+                }
+
+                @Override
+                public void onComplete() {
+
+                }
+
+
+            });
+        }
     }
 
 
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if(gattUpdateReceiver!=null)
+            unregisterReceiver(gattUpdateReceiver);
+    }
+    private void displayGattServices(List<BluetoothGattService> gattServices) {
+        if (gattServices == null && gattServices.size()==0) return;
+
+        /**
+         * Currently we are working on pressure
+         */
+
+
+//        // Loops through available GATT Services.
+        for (BluetoothGattService gattService : gattServices) {
+        Log.d(TAG, "displayGattServices gattService : " + new Gson().toJson(gattServices));
+//
+        for (BluetoothGattCharacteristic gattCharacteristic :
+                gattService.getCharacteristics()) {
+            Log.d(TAG, "displayGattServices gattCharacteristic: " + new Gson().toJson(gattCharacteristic));
+//                charas.add(gattCharacteristic);
 
 
 
+        }
+//
+            }
+//
+    }
 
 }
